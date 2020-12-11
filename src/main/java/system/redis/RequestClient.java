@@ -19,14 +19,7 @@ public class RequestClient {
 
 
     /** 判断及领取的脚本 */
-    private static String claimScript =
-            " local stock_num = redis.call('get', KEYS[1]) " +
-             " local quota = redis.call('get', KEYS[2]) " +
-                    "if stock_num > tonumber(ARGV[1]) then " +
-                    " if quota > tonumber(ARGV[2]) then " +
-                    " redis.call('decr', KEYS[1]) redis.call('decr', KEYS[2]) return 0 " +
-                    " else return 1 end " +
-                    " else return 2 end ";
+    private static String claimScript = "local stock_num=tonumber(redis.call('get',KEYS[1])) local quota=tonumber(redis.call('get',KEYS[2])) if stock_num > 0 then if quota > 0 then redis.call('decr',KEYS[1])  redis.call('decr',KEYS[2]) return 0 else return 1 end else return 2 end";
 
 
     public RequestClient(int id){
@@ -34,7 +27,7 @@ public class RequestClient {
     }
 
 
-    public void claimFromRedis(Integer couponId){
+    public ClaimResult claimFromRedis(Integer couponId){
 
         JedisPool singleRedisPool = RedisPoolMgr.getSingleRedisPool();
         Jedis jedis = singleRedisPool.getResource();
@@ -44,11 +37,17 @@ public class RequestClient {
         List<String> args = new ArrayList<>();
         args.add("0");
         args.add("0");
-        String shaKey = jedis.scriptLoad(claimScript);
-        Object eval = jedis.evalsha(shaKey, keys, args);
+        Object eval;
+        try {
+            String shaKey = jedis.scriptLoad(claimScript);
+            eval = jedis.evalsha(shaKey, keys, args);
+        } finally {
+            jedis.close();
+        }
+        int num = String.valueOf(eval).equals("0") ? 1 : 0;
+        System.out.println("用户:" + userId + ", 领取优惠券:" + couponId + ", 数量: " + num);
 
-        int num = eval.equals(0) ? 1 : 0;
-        System.out.println("用户:" + userId + "领取优惠券:" + couponId + ", 数量: " + num);
+        return new ClaimResult(couponId,userId,num);
     }
 
 }
